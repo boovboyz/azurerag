@@ -69,3 +69,49 @@ def download_file(file_id, filename):
     with open(path, "wb") as f:
         f.write(r.content)
     return path
+
+def get_file_permissions(file_id):
+    """
+    Fetch permissions for a file from SharePoint via MS Graph API.
+    Returns a list of user and group IDs that have access to the file.
+    
+    Uses: GET /drives/{drive-id}/items/{item-id}/permissions
+    """
+    token = get_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"https://graph.microsoft.com/v1.0/drives/{DRIVE_ID}/items/{file_id}/permissions"
+    
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"Warning: Could not fetch permissions for {file_id}: {response.status_code}")
+        return []
+    
+    permissions_data = response.json().get("value", [])
+    allowed_principals = []
+    
+    for perm in permissions_data:
+        # Extract user identities
+        if "grantedToV2" in perm:
+            granted = perm["grantedToV2"]
+            if "user" in granted and "id" in granted["user"]:
+                allowed_principals.append(granted["user"]["id"])
+            if "group" in granted and "id" in granted["group"]:
+                allowed_principals.append(granted["group"]["id"])
+        
+        # Handle legacy grantedTo format
+        if "grantedTo" in perm:
+            granted = perm["grantedTo"]
+            if "user" in granted and "id" in granted["user"]:
+                allowed_principals.append(granted["user"]["id"])
+        
+        # Handle grantedToIdentitiesV2 for shared links with multiple recipients
+        if "grantedToIdentitiesV2" in perm:
+            for identity in perm["grantedToIdentitiesV2"]:
+                if "user" in identity and "id" in identity["user"]:
+                    allowed_principals.append(identity["user"]["id"])
+                if "group" in identity and "id" in identity["group"]:
+                    allowed_principals.append(identity["group"]["id"])
+    
+    # Remove duplicates
+    return list(set(allowed_principals))
+
